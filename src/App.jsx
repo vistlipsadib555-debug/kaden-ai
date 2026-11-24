@@ -402,7 +402,7 @@ fontSize: '14px',
 
 
 
-)}
+
 {imagePreview && (
 <div style={{ marginTop: '15px', textAlign: 'center' }}>
 <img
