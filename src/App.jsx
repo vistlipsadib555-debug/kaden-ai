@@ -11,7 +11,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [discordStatus, setDiscordStatus] = useState('');
 
-  // カメラ制御用の状態と参照
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -26,26 +25,22 @@ export default function App() {
     localStorage.setItem('kaden_inventory', JSON.stringify(inventory));
   }, [inventory]);
 
-  // 画面を閉じる際にカメラを停止
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, []);
 
-  // カメラ起動処理（全端末対応）
   const startCamera = async () => {
     setResult(null);
     setDiscordStatus('');
     try {
-      // スマホ・タブレットでは背面カメラを優先し、PCでは標準カメラを起動
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
       streamRef.current = stream;
       setIsCameraOpen(true);
-      // video要素が描画されたあとにストリームをセット
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -61,7 +56,6 @@ export default function App() {
     }
   };
 
-  // カメラ停止処理
   const stopCamera = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
@@ -70,7 +64,6 @@ export default function App() {
     setIsCameraOpen(false);
   };
 
-  // カメラ映像から写真を撮影して解析へ渡す処理
   const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
@@ -151,7 +144,6 @@ export default function App() {
     }
   };
 
-  // 画像ファイル（カメラ撮影・ファイル選択共通）のAI解析処理
   const processImageFile = async (file) => {
     if (!file) return;
 
@@ -320,7 +312,6 @@ export default function App() {
     <div style={{ maxWidth: '650px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <h2>家電リサイクルAI</h2>
 
-      {/* カメラ起動ボタン ＆ 画像選択ボタン */}
       {!isCameraOpen ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button
@@ -352,20 +343,20 @@ export default function App() {
               cursor: 'pointer',
               fontWeight: 'bold',
               fontSize: '14px',
-border: '1px solid #ccc',
-}}
->
-📁 保存済み画像から選択
-<input
-type="file"
-accept="image/"
-onChange={handleImageChange}
-style={{ display: 'none' }}
+              border: '1px solid #ccc',
+            }}
+          >
+            📁 保存済み画像から選択
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              style={{ display: 'none' }}
+コードは注意してご使用ください。
 />
 
 
 ) : (
-/ アプリ内カメラプレビュー画面 */
 <div
 style={{
 backgroundColor: '#000',
@@ -446,7 +437,6 @@ border: 2px solid ${result.isTarget ? '#ff4d4d' : '#4da6ff'},
 {result.modelNumber}
 {result.reason}
 )}
-{/* 在庫管理リスト */}
 <div style={{ marginTop: '30px' }}>
 <div
 style={{
