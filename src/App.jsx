@@ -609,8 +609,3 @@ export default function App() {
     </div>
   );
 }
-
-              backgroundColor: '#f0f0f0',
-              color: '#333',
-              textAlign: 'center',
-              borderRadius: '8px',
