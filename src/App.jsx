@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI } from '@google/genai';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -11,6 +11,12 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [discordStatus, setDiscordStatus] = useState('');
 
+  // カメラ制御用の状態と参照
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+
   const [inventory, setInventory] = useState(() => {
     const saved = localStorage.getItem('kaden_inventory');
     return saved ? JSON.parse(saved) : [];
@@ -19,6 +25,73 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('kaden_inventory', JSON.stringify(inventory));
   }, [inventory]);
+
+  // 画面を閉じる際にカメラを停止
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // カメラ起動処理（全端末対応）
+  const startCamera = async () => {
+    setResult(null);
+    setDiscordStatus('');
+    try {
+      // スマホ・タブレットでは背面カメラを優先し、PCでは標準カメラを起動
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setIsCameraOpen(true);
+      // video要素が描画されたあとにストリームをセット
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (err) {
+      console.error('カメラ起動エラー:', err);
+      alert(
+        'カメラを起動できませんでした。ブラウザのカメラ許可が「許可」になっているか確認してください。\n(' +
+          err.message +
+          ')'
+      );
+    }
+  };
+
+  // カメラ停止処理
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  // カメラ映像から写真を撮影して解析へ渡す処理
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        stopCamera();
+        processImageFile(file);
+      },
+      'image/jpeg',
+      0.9
+    );
+  };
 
   const sendToDiscord = async (item, type = 'IN', file = null) => {
     if (!webhookUrl) {
@@ -78,10 +151,9 @@ export default function App() {
     }
   };
 
-  const handleImageChange = async (e) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    const file = fileList.item(0);
+  // 画像ファイル（カメラ撮影・ファイル選択共通）のAI解析処理
+  const processImageFile = async (file) => {
+    if (!file) return;
 
     setImagePreview(URL.createObjectURL(file));
     setResult(null);
@@ -162,6 +234,13 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  const handleImageChange = (e) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    processImageFile(fileList.item(0));
+  };
+
   const handleCompleteShipment = async (id) => {
     const today = new Date().toLocaleDateString('ja-JP');
     let targetItem = null;
@@ -241,192 +320,35 @@ export default function App() {
     <div style={{ maxWidth: '650px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
       <h2>家電リサイクルAI</h2>
 
-      <label
-        style={{
-          display: 'block',
-          padding: '15px',
-          backgroundColor: '#0066cc',
-          color: '#fff',
-          textAlign: 'center',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-          fontSize: '16px',
-        }}
-      >
-        📷 型番(家電コード)を撮影 / 画像選択
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleImageChange}
-          style={{ display: 'none' }}
-        />
-      </label>
+      {/* カメラ起動ボタン ＆ 画像選択ボタン */}
+      {!isCameraOpen ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button
+            type="button"
+            onClick={startCamera}
+            style={{
+              width: '100%',
+              padding: '15px',
+              backgroundColor: '#0066cc',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '16px',
+            }}
+          >
+            📷 カメラを起動して撮影
+          </button>
 
-      {imagePreview && (
-        <div style={{ marginTop: '15px', textAlign: 'center' }}>
-          <img
-            src={imagePreview}
-            alt="プレビュー"
-            style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px' }}
-          />
-        </div>
-      )}
-
-      {loading && (
-        <p style={{ textAlign: 'center', marginTop: '15px', fontWeight: 'bold' }}>
-          AIが型番を解析＆在庫登録中...
-        </p>
-      )}
-
-      {result && (
-        <div
-          style={{
-            marginTop: '15px',
-            padding: '15px',
-            borderRadius: '8px',
-            backgroundColor: result.isTarget ? '#ffeaea' : '#eef7ff',
-            border: `2px solid ${result.isTarget ? '#e60000' : '#0066cc'}`,
-          }}
-        >
-          <h3 style={{ margin: '0 0 10px 0', color: result.isTarget ? '#e60000' : '#0066cc' }}>
-            {result.isTarget ? '⭕ 家電リサイクル対象（在庫に追加済）' : '❌ 対象外'}
-          </h3>
-          <p style={{ margin: '4px 0' }}>
-            <strong>型番(コード)：</strong>
-            {result.modelNumber}
-          </p>
-          <p style={{ margin: '4px 0' }}>
-            <strong>品目：</strong>
-            {result.category}
-          </p>
-          <p style={{ margin: '4px 0' }}>
-            <strong>メーカー：</strong>
-            {result.manufacturer} {result.makerCode && `(コード: ${result.makerCode})`}
-          </p>
-          <p style={{ margin: '4px 0' }}>
-            <strong>判定根拠：</strong>
-            {result.reason}
-          </p>
-          {discordStatus && (
-            <p style={{ marginTop: '8px', fontWeight: 'bold', color: '#222' }}>{discordStatus}</p>
-          )}
-        </div>
-      )}
-
-      <div style={{ marginTop: '30px', borderTop: '2px solid #ddd', paddingTop: '20px' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '15px',
-          }}
-        >
-          <h3 style={{ margin: 0 }}>📦 在庫管理リスト（全 {inventory.length} 件）</h3>
-          {inventory.length > 0 && (
-            <button
-              onClick={exportToCSV}
-              style={{
-                padding: '8px 14px',
-                backgroundColor: '#1d6f42',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-              }}
-            >
-              📊 Excel用CSV出力
-            </button>
-          )}
-        </div>
-
-        {inventory.length === 0 ? (
-          <p style={{ color: '#666' }}>
-            まだ登録された在庫はありません。上のボタンから撮影してください。
-          </p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {inventory.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  padding: '12px',
-                  borderRadius: '8px',
-                  border: '1px solid #ccc',
-                  backgroundColor: item.status === '搬出完了' ? '#f4f4f4' : '#fff',
-                }}
-              >
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span
-                    style={{
-                      padding: '3px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      fontWeight: 'bold',
-                      backgroundColor: item.status === '搬出完了' ? '#666' : '#ff9800',
-                      color: '#fff',
-                    }}
-                  >
-                    {item.status}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#555' }}>
-                    入庫日: {item.inDate} {item.outDate && ` / 搬出完了日: ${item.outDate}`}
-                  </span>
-                </div>
-
-                <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                  <strong>{item.isTarget ? '⭕対象' : '❌対象外'}</strong> ｜{' '}
-                  <strong>{item.category}</strong> ｜ {item.manufacturer}（型番:{' '}
-                  <code>{item.modelNumber}</code>）
-                </div>
-
-                <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-                  {item.status !== '搬出完了' && (
-                    <button
-                      onClick={() => handleCompleteShipment(item.id)}
-                      style={{
-                        padding: '6px 12px',
-                        backgroundColor: '#0066cc',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      🚚 搬出完了にする
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    style={{
-                      padding: '6px 10px',
-                      backgroundColor: '#eee',
-                      color: '#333',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer',
-                      fontSize: '12px',
-                    }}
-                  >
-                    削除
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+          <label
+            style={{
+              display: 'block',
+              padding: '12px',
+              backgroundColor: '#f0f0f0',
+              color: '#333',
+              textAlign: 'center',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              fontSize: '14px',
