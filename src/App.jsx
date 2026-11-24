@@ -352,7 +352,6 @@ export default function App() {
               accept="image/*"
               onChange={handleImageChange}
               style={{ display: 'none' }}
-コードは注意してご使用ください。
 />
 
 
